@@ -9,7 +9,7 @@ from octoprint.settings import settings
 import octoprint.timelapse
 import octoprint.server
 from octoprint.users import ApiUser
-
+import logging
 import flask as _flask
 
 from . import flask
@@ -26,7 +26,7 @@ def apiKeyRequestHandler():
 	the global, an app specific or a user specific one. In any case it has to be present and must be valid, so anything
 	other than the above types will result in the application denying the request.
 	"""
-
+	
 	import octoprint.server
 
 	if _flask.request.method == 'OPTIONS' and settings().getBoolean(["api", "allowCrossOrigin"]):
@@ -35,9 +35,12 @@ def apiKeyRequestHandler():
 	if _flask.request.endpoint == "static" or _flask.request.endpoint.endswith(".static"):
 		return
 
+	logging.getLogger("octoprint.apikey").debug(_flask.request)
 	apikey = get_api_key(_flask.request)
+	logging.getLogger("octoprint.apikey").debug("apikey = [%s]"%apikey)
 	if apikey is None:
 		# no api key => 401
+		logging.getLogger("octoprint.apikey").debug("401 no key")
 		return _flask.make_response("No API key provided", 401)
 
 	if apikey == octoprint.server.UI_API_KEY:
@@ -46,17 +49,21 @@ def apiKeyRequestHandler():
 
 	if not settings().getBoolean(["api", "enabled"]):
 		# api disabled => 401
+		logging.getLogger("octoprint.apikey").debug("401 disabled")
 		return _flask.make_response("API disabled", 401)
 
 	if apikey == settings().get(["api", "key"]):
+		logging.getLogger("octoprint.apikey").debug("'X-Api-Key' found and valid")
 		# global api key => continue regular request processing
 		return
 
 	if octoprint.server.appSessionManager.validate(apikey):
 		# app session key => continue regular request processing
+		logging.getLogger("octoprint.apikey").debug("appSessionManager valid")
 		return
 
 	user = get_user_for_apikey(apikey)
+	logging.getLogger("octoprint.apikey").debug(user)
 	if user is not None:
 		# user specific api key => continue regular request processing
 		return
@@ -141,6 +148,8 @@ def get_user_for_apikey(apikey):
 
 
 def get_api_key(request):
+	logging.getLogger("octoprint.server").debug(request.values)
+	
 	# Check Flask GET/POST arguments
 	if hasattr(request, "values") and "apikey" in request.values:
 		return request.values["apikey"]
@@ -152,7 +161,10 @@ def get_api_key(request):
 
 	# Check Tornado and Flask headers
 	if "X-Api-Key" in request.headers.keys():
+		logging.getLogger("octoprint.apikey").debug("request.headers.get('X-Api-Key') = [%s]"%request.headers.get("X-Api-Key"))
 		return request.headers.get("X-Api-Key")
+
+	logging.getLogger("octoprint.apikey").debug("Nope. No 'X-Api-Key'")
 
 	return None
 
